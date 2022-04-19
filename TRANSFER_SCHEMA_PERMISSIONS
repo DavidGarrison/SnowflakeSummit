@@ -1,0 +1,65 @@
+CREATE OR REPLACE PROCEDURE PUBLIC.TRANSFER_SCHEMA_PERMISSIONS (DATABASE_NAME VARCHAR, SCHEMA_NAME VARCHAR, EXISTING_OWNER_ROLE VARCHAR, NEW_OWNER_ROLE VARCHAR, PERMISSIONS_ROLES VARCHAR)
+RETURNS VARIANT
+LANGUAGE JAVASCRIPT
+EXECUTE AS OWNER
+AS
+// This is mostly useless if you used managed schemas, but the general structure of building a list of objects 
+// and looping through them to run an operation on them is useful. I use this for quickly changing access around in test databases.
+
+// DATABASE_NAME: database with the schema that will have its permissions adjusted
+// SCHEMA_NAME: schema that will have its permissions adjusted
+// EXISTING_OWNER_ROLE: (optional, required if NEW_OWNER_ROLE is included) the role that currently owns the database. 
+//              In particular, the role that has future ownership on views and tables.
+// NEW_OWNER_ROLE: (optional) if provided, this role will be given ownership of the database and all of its objects.
+//              if not provided, the owner will not be changed.
+// PERMISSIONS_ROLES: (optional) pipe delimited list of roles that should be granted "ALL" permissions to all objects in the database
+// USAGE permissions should only ever be granted to ACCOUNTADMIN, since this allows the caller to alter ownership and access to existing databases
+// Note that this does not remove grants for roles that already have access. It changes ownership, and grants ALL access to the PERMISSIONS_ROLES list.
+// Example usage:
+// call TRANSFER_SCHEMA_PERMISSIONS('UTIL_DB', 'calls_submision', 'DBA', 'BIADMIN', 'BIADMIN');
+// Wherever this sproc runs, it uses the permissions of the owner of the sproc. In order for the permissions queries to work it needs to be owned by ACCOUNTADMIN
+// grant ownership on procedure TRANSFER_SCHEMA_PERMISSIONS(varchar,varchar,varchar,varchar,varchar) to accountadmin copy current grants;
+// In addition, USAGE permissions should only ever be granted to ACCOUNTADMIN, since this allows you to alter ownership and permissions to existing databases
+// Note that this does not remove grants for roles that already have access. It changes ownership, and grants ALL access to the PERMISSIONS_ROLES list.
+// Create list of object types that need permission/ownership changed
+$$
+    objectTypes = ["TABLE", "VIEW", "STAGE", "FILE FORMAT", "FUNCTION", "PROCEDURE", "SEQUENCE"];
+    
+
+
+    SchemaOwnershipQuery = "grant ownership on SCHEMA " + DATABASE_NAME + "."+ SCHEMA_NAME + " to " + NEW_OWNER_ROLE + " COPY CURRENT GRANTS";
+    snowflake.createStatement({sqlText: SchemaOwnershipQuery}).execute();
+    
+
+    if (NEW_OWNER_ROLE) {
+        for (o = 0; o < objectTypes.length; o++) {
+            //Ownership of existing objects
+            objectOwnershipQuery = "grant ownership on all " + objectTypes[o] + "s IN SCHEMA " + DATABASE_NAME + "." + SCHEMA_NAME + " to " + NEW_OWNER_ROLE + " COPY CURRENT GRANTS";
+            snowflake.createStatement({sqlText: objectOwnershipQuery}).execute()                
+             
+            //Ownership of future objects
+            futureObjectRevokeQuery = "revoke ownership on future " + objectTypes[o] + "s IN SCHEMA " + DATABASE_NAME + "." + SCHEMA_NAME + " FROM ROLE " + EXISTING_OWNER_ROLE;
+            futureObjectOwnershipQuery = "grant ownership on future " + objectTypes[o] + "s IN SCHEMA " + DATABASE_NAME + "." + SCHEMA_NAME + " TO ROLE " + NEW_OWNER_ROLE;
+            
+            snowflake.createStatement({sqlText: futureObjectRevokeQuery}).execute() ;               
+            snowflake.createStatement({sqlText: futureObjectOwnershipQuery}).execute();
+        }            
+    }
+//Grant Permissions to each role in pipe delimited list: PERMISSIONS_ROLES
+    if (PERMISSIONS_ROLES) {
+        roles = PERMISSIONS_ROLES.split("|")
+        for (r = 0; r < roles.length; r++) {
+            //Grant object permissions for each object type
+            for (o = 0; o < objectTypes.length; o++) {
+                objectPermissionsQuery = "grant all on all " + objectTypes[o] + "s IN SCHEMA " + DATABASE_NAME + "." + SCHEMA_NAME + " to " + roles[r];
+                futureObjectPermissionsQuery = "grant all on future " + objectTypes[o] + "s IN SCHEMA " + DATABASE_NAME + "." + SCHEMA_NAME + " to " + roles[r];
+                snowflake.createStatement({sqlText: objectPermissionsQuery}).execute();
+                snowflake.createStatement({sqlText: futureObjectPermissionsQuery}).execute();
+            }
+            schemaPermissionsQuery = "grant all on SCHEMA " + DATABASE_NAME + "." + SCHEMA_NAME + " to " + roles[r];
+            snowflake.createStatement({sqlText: schemaPermissionsQuery}).execute();
+        }
+
+    }
+
+$$
