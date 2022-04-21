@@ -6,7 +6,9 @@ import errno
 import re
 import argparse
 
-#This mask is slightly out of date with how Data masks work in DDLs now.
+#Runs queries for objects in a given DB/Schema, generates DDLs for them, and puts those into a git repository structure.
+
+#This script is slightly out of date with how Data masks work in DDLs now.
 # And naming conventions may need to be adjusted
 # Still useful for one-off uses, but updates are needed for this to be used repeatably
 
