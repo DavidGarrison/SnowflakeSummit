@@ -3,8 +3,8 @@ RETURNS VARIANT
 LANGUAGE JAVASCRIPT
 EXECUTE AS OWNER
 AS
-// This is mostly useless if you used managed schemas, but the general structure of building a list of objects 
-// and looping through them to run an operation on them is useful. I use this for quickly changing access around in test databases.
+// I use this for quickly changing access around in test databases. This is mostly useless if you used managed schemas
+//  the general structure of building a list of objects and looping through them to run an operation on them is useful either way. 
 
 // DATABASE_NAME: database with the schema that will have its permissions adjusted
 // SCHEMA_NAME: schema that will have its permissions adjusted
@@ -24,13 +24,10 @@ AS
 // Create list of object types that need permission/ownership changed
 $$
     objectTypes = ["TABLE", "VIEW", "STAGE", "FILE FORMAT", "FUNCTION", "PROCEDURE", "SEQUENCE"];
-    
-
-
+  
     SchemaOwnershipQuery = "grant ownership on SCHEMA " + DATABASE_NAME + "."+ SCHEMA_NAME + " to " + NEW_OWNER_ROLE + " COPY CURRENT GRANTS";
     snowflake.createStatement({sqlText: SchemaOwnershipQuery}).execute();
     
-
     if (NEW_OWNER_ROLE) {
         for (o = 0; o < objectTypes.length; o++) {
             //Ownership of existing objects
