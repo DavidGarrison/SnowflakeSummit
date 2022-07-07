@@ -137,10 +137,8 @@ for schema in schemas:
         sql_ddl = re.sub('\t', '    ', sql_ddl)
         
         #Views can include three part naming. reduce it to just an object name to keep it in line with other objects
-        #also they start with a newline for some reason. remove this too.
         if obj[0] == 'VIEW':
             sql_ddl = re.sub(f'CREATE OR REPLACE VIEW ({database}\.)*({schema}\.)*', 'CREATE OR REPLACE VIEW ', sql_ddl, flags=re.IGNORECASE)
-            sql_ddl = sql_ddl[1:]
             
             #Add Reader grants to all views that do not have PII
             # 2021-01-01: Not all schemas have been set up with the same PII naming conventions, so double check this in the git compare
